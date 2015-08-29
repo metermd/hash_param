@@ -45,7 +45,12 @@ arguments, both optional and required, `*rest` and `**kwrest` parameters.
 
 After named positional arguments, `auto_param` will try to fill named keyword
 arguments, then will send the rest to `**kwrest` if listed, and lastly, will
-send whats left of the data object to `*args`.
+send whats left of the data object to `*args`.  In practice, this means you'll
+never get values in both `*args` and `**kwrest`.
+
+`*args` parameters keep the string key names, while `**kwrest` hashes get their
+keys converted into symbols.  If there are no values to pass to `*args`, you'll
+get an empty list, not a list containing an empty Hash.
 
 If the argument list cannot be satisfied, `ArgumentError` is raised.  Extraneous
 properties sent to the action are ignored if not consumed through the argument

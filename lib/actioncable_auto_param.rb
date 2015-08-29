@@ -1,5 +1,6 @@
 require 'actioncable_auto_param/version'
-require 'action_cable/channel'
+require 'active_support/core_ext/class/attribute'
+require 'action_cable'
 
 module ActioncableAutoParam
   module ClassMethods
@@ -32,8 +33,6 @@ module ActioncableAutoParam
     else
       super
     end
-  rescue
-    puts $!, $!.backtrace
   end
 
   private
@@ -63,9 +62,17 @@ module ActioncableAutoParam
           kwargs[name] = value if exists
 
         when :rest
+          # If data happens to contain a key with the same name as the rest arg,
+          # we still want it to show up string-ized, so we put back the value
+          # we deleted earlier.
+          data[key_name] = value if exists
           rest_index = i
 
         when :keyrest
+          # Because keyrest supercedes rest, we add this to kwargs if the
+          # data hash happened to contain a key named the same as the keyrest
+          # argument name.
+          kwargs[name] = value if exists
           has_kwrest = true
 
         else
@@ -77,7 +84,7 @@ module ActioncableAutoParam
     if has_kwrest
       kwargs.merge!(data.map { |k,v| [k.to_sym, v] }.to_h)
     elsif rest_index
-      args[rest_index, 0] = data
+      args[rest_index, 0] = data unless data.empty?
     end
 
     if kwargs.empty?
