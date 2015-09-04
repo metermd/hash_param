@@ -71,7 +71,7 @@ module HashParam
         exists = data.key?(key_name)
       end
 
-      value = exists ? data.delete(key_name) : nil
+      value = data.delete(key_name)
 
       case type
         when :req
