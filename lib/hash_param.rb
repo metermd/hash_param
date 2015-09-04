@@ -1,43 +1,43 @@
-require 'actioncable_auto_param/version'
-require 'active_support/core_ext/class/attribute'
-require 'action_cable'
+require 'hash_param/version'
 
-module ActioncableAutoParam
+module HashParam
+  def self.included(cls)
+    cls.extend(ClassMethods)
+  end
+
   module ClassMethods
-    def auto_param(*method_names)
+    def hash_param(*method_names)
       method_names.each do |method_name|
-        if method_name == :all
-          self.auto_param_all_methods = true
+        visibility = instance_method_visibility(method_name)
+        hidden_name = "#{method_name}_before_hash_param"
+
+        alias_method hidden_name, method_name
+        private hidden_name
+
+        define_method(method_name) do |*args|
+          hash_param_dispatch(hidden_name, *args)
         end
 
-        self.auto_param_methods ||= []
-        self.auto_param_methods.push(method_name)
+        # We set the new wrapping method's visibility to what the original was.
+        send(visibility, method_name)
       end
     end
 
-    def auto_param?(method_name)
-      auto_param_all_methods || (auto_param_methods || []).include?(method_name)
-    end
-  end
-
-  def self.prepended(cls)
-    cls.class_attribute :auto_param_all_methods
-    cls.class_attribute :auto_param_methods
-  end
-
-  # Monkeypatch
-  def dispatch_action(action, data)
-    method_name = action.to_sym
-    if self.class.auto_param?(method_name)
-      auto_param_dispatch(method_name, data)
-    else
-      super
+    private
+    # This determines the visibility of an instance method, e.g.,
+    # Object.instance_method_visibility(:object_id) => :public
+    def instance_method_visibility(method_name)
+      return :public    if public_instance_methods.include?(method_name)
+      return :protected if protected_instance_methods.include?(method_name)
+      return :private   if private_instance_methods.include?(method_name)
+      fail NoMethodError, "Cannot access visibility of #{name}\##{method_name}"
     end
   end
 
   private
-  def auto_param_dispatch(method_name, data)
+  def hash_param_dispatch(method_name, data)
     args, kwargs, rest_index, has_kwrest = [], {}, nil, nil
+    public_method_name = method_name
 
     method(method_name).parameters.each.with_index do |(type, name), i|
       key_name = name.to_s
@@ -46,7 +46,7 @@ module ActioncableAutoParam
 
       case type
         when :req
-          fail ArgumentError, "#{method_name}: required argument " +
+          fail ArgumentError, "#{public_method_name}: required argument " +
                               "`#{name}' not present" unless exists
           args.push(value)
 
@@ -54,7 +54,7 @@ module ActioncableAutoParam
           args.push(value) if exists
 
         when :keyreq
-          fail ArgumentError, "#{method_name}: required keyword argument " +
+          fail ArgumentError, "#{public_method_name}: required keyword argument " +
                               "`#{name}' not present" unless exists
           kwargs[name] = value
 
@@ -76,8 +76,8 @@ module ActioncableAutoParam
           has_kwrest = true
 
         else
-          fail ArgumentError, "#{method_name}: cannot dispatch argument `#{name}', " +
-                              "(type: #{type}) from Hash"
+          fail ArgumentError, "#{public_method_name}: cannot dispatch " +
+                              "argument `#{name}', (type: #{type}) from Hash"
       end
     end
 
@@ -94,6 +94,3 @@ module ActioncableAutoParam
     end
   end
 end
-
-ActionCable::Channel::Base.extend(ActioncableAutoParam::ClassMethods)
-ActionCable::Channel::Base.prepend(ActioncableAutoParam)
