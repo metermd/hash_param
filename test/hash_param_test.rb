@@ -42,6 +42,21 @@ class HashParamTest < Minitest::Test
     def f_rest_kwrest(a, *b, **c)
       @log.push [__method__, a, b, c]
     end
+
+    # This acts like Rails' params hash
+    def params
+      {'a' => 1, 'b' => 2, 'c' => 3}
+    end
+
+    def f_pulls_params(a, b, c)
+      @log.push [__method__, a, b, c]
+    end
+    hash_param :f_pulls_params, from: :params
+
+    def f_transform_keys(cat, bat, dog)
+      @log.push [__method__, cat, bat, dog]
+    end
+    hash_param :f_transform_keys, transform_key: :reverse
   end
 
   def setup
@@ -109,4 +124,23 @@ class HashParamTest < Minitest::Test
     # on it ending up in the kwrest argument, c
     assert_equal [:f_rest_kwrest, 1, [], {b: 2, c: 3, d: 4}], @m.log.last
   end
+
+  def test_pulls_params
+    @m.f_pulls_params
+    assert_equal [:f_pulls_params, 1, 2, 3], @m.log.last
+  end
+
+  def test_symbolic_keys
+    @m.f_rest_middle a: 1, c: 2, d: 3
+    # in this case, the *args handling gives us back what we gave it, which
+    # isn't a string here.
+    assert_equal [:f_rest_middle, 1, [{d: 3}], 2], @m.log.last
+  end
+
+  def test_transform_key
+    # These should go in as 'cat', 'bat', and 'dog'
+    @m.f_transform_keys tac: 1, tab: 2, god: 3
+    assert_equal [:f_transform_keys, 1, 2, 3], @m.log.last
+  end
+
 end

@@ -6,7 +6,7 @@ module HashParam
   end
 
   module ClassMethods
-    def hash_param(*method_names)
+    def hash_param(*method_names, transform_key: nil, from: nil)
       method_names.each do |method_name|
         visibility = instance_method_visibility(method_name)
         hidden_name = "#{method_name}_before_hash_param"
@@ -14,11 +14,26 @@ module HashParam
         alias_method hidden_name, method_name
         private hidden_name
 
-        define_method(method_name) do |*args|
-          hash_param_dispatch(hidden_name, *args)
+        if from.nil?
+          # We're passed the argument, e.g., caller expects f(data)
+          define_method(method_name) do |arg|
+            hash_param_dispatch(hidden_name, arg, transform_key: transform_key)
+          end
+        elsif from.is_a?(Symbol) && from.to_s[0] == '@'
+          # Pull the data from an instance variable
+          define_method(method_name) do
+            hash_param_dispatch(hidden_name, instance_variable_get(from),
+                                transform_key: transform_key)
+          end
+        elsif from.is_a?(Symbol)
+          # Pull the Hash from a method, e.g., Rails' `params`
+          define_method(method_name) do
+            hash_param_dispatch(hidden_name, send(from),
+                                transform_key: transform_key)
+          end
         end
 
-        # We set the new wrapping method's visibility to what the original was.
+        # Set the new wrapping method's visibility to what the original was.
         send(visibility, method_name)
       end
     end
@@ -35,13 +50,27 @@ module HashParam
   end
 
   private
-  def hash_param_dispatch(method_name, data)
+  def hash_param_dispatch(method_name, data, transform_key: nil)
     args, kwargs, rest_index, has_kwrest = [], {}, nil, nil
     public_method_name = method_name
 
+    if transform_key
+      data = data.map do |k, v|
+        [k.to_s.send(transform_key), v]
+      end.to_h
+    end
+
     method(method_name).parameters.each.with_index do |(type, name), i|
-      key_name = name.to_s
+      # attempt symbol
+      key_name = name
       exists = data.key?(key_name)
+
+      # try again with string key
+      if !exists
+        key_name = name.to_s
+        exists = data.key?(key_name)
+      end
+
       value = exists ? data.delete(key_name) : nil
 
       case type
